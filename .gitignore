@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build
+dist/
+coverage/
+*.tsbuildinfo
+
+# tests
+.e2e-runtime/
+
+# env
+.env
+.env.local
+
+# runtime data (SQLite + uploads)
+src/data/*.db
+src/data/*.db-journal
+src/data/*.db-shm
+src/data/*.db-wal
+src/data/uploads/
+
+# logs
+*.log
+npm-debug.log*
+
+# os
+.DS_Store
+Thumbs.db
+

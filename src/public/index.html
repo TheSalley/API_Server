@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>API 调试面板</title>
+<style>
+  :root {
+    --bg: #101218;
+    --bg2: #171a22;
+    --bg3: #1f232e;
+    --border: #2a2f3a;
+    --text: #dde3ee;
+    --muted: #8a94a6;
+    --accent: #4f8cff;
+    --green: #3fb950;
+    --red: #f85149;
+    --amber: #d29922;
+    --mono: "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  header .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  header input#baseUrl {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    width: 320px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  nav {
+    width: 300px;
+    border-right: 1px solid var(--border);
+    background: var(--bg2);
+    overflow-y: auto;
+    padding: 10px;
+    flex-shrink: 0;
+  }
+  nav .group { margin-bottom: 14px; }
+  nav .group-title {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 6px 4px;
+  }
+  nav .ep {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  nav .ep:hover { background: var(--bg3); }
+  nav .ep.active { background: var(--bg3); outline: 1px solid var(--border); }
+  nav .ep .m {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    min-width: 46px;
+    text-align: center;
+  }
+  nav .ep .t { font-size: 13px; }
+  nav .ep .d { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .m.GET { color: #58a6ff; background: rgba(88,166,255,.12); }
+  .m.POST { color: #3fb950; background: rgba(63,185,80,.12); }
+  .m.PUT { color: #d29922; background: rgba(210,153,34,.12); }
+  .m.DELETE { color: #f85149; background: rgba(248,81,73,.12); }
+
+  section#builder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 16px;
+    gap: 14px;
+  }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .card h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .req-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 8px;
+    word-break: break-all;
+  }
+  .req-line .m { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .req-line code { flex: 1; font-size: 12.5px; }
+
+  .field-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .field-inline { display: flex; gap: 8px; flex-wrap: wrap; }
+  .field-inline label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  input[type=text], input[type=number], input[type=file], select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12.5px;
+    font-family: var(--mono);
+  }
+  textarea {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px;
+    width: 100%;
+    min-height: 220px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    resize: vertical;
+    line-height: 1.5;
+    tab-size: 2;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-weight: 400;
+  }
+  button.ghost:hover { background: var(--bg3); }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  .actions .spacer { flex: 1; }
+
+  .resp-meta { display: flex; gap: 16px; align-items: center; font-size: 12px; margin-bottom: 8px; }
+  .badge { padding: 2px 10px; border-radius: 20px; font-weight: 700; font-family: var(--mono); }
+  .badge.ok { background: rgba(63,185,80,.15); color: var(--green); }
+  .badge.err { background: rgba(248,81,73,.15); color: var(--red); }
+  pre {
+    margin: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    max-height: 420px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  aside#history {
+    width: 260px;
+    border-left: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 10px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  aside#history h2 {
+    margin: 4px 4px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .h-item {
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .h-item:hover { background: var(--bg3); border-color: var(--border); }
+  .h-item .r { display: flex; gap: 6px; align-items: center; font-size: 11.5px; font-family: var(--mono); }
+  .h-item .u { font-size: 11px; color: var(--muted); word-break: break-all; margin-top: 2px; }
+  .empty { color: var(--muted); font-size: 12px; padding: 8px 4px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #2c323d; border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1>API 调试面板</h1>
+  <span class="sub">material_collect_system 后端 · 预设文案 / 媒体上传</span>
+  <div class="right">
+    <span class="sub">Base URL</span>
+    <input id="baseUrl" type="text" spellcheck="false" />
+  </div>
+</header>
+
+<main>
+  <nav id="endpointList"></nav>
+
+  <section id="builder">
+    <div class="card">
+      <h2>请求</h2>
+      <div class="req-line">
+        <span id="methodBadge" class="m">GET</span>
+        <code id="urlLine"></code>
+        <button class="ghost" id="copyUrl" title="复制完整 URL">复制 URL</button>
+      </div>
+    </div>
+
+    <div id="pathParams" class="card" style="display:none;">
+      <h2>路径参数</h2>
+      <div class="field-inline" id="pathParamsWrap"></div>
+    </div>
+
+    <div id="queryParams" class="card" style="display:none;">
+      <h2>查询参数</h2>
+      <div class="field-inline" id="queryParamsWrap"></div>
+    </div>
+
+    <div id="bodyCard" class="card" style="display:none;">
+      <h2>请求体 (JSON)</h2>
+      <textarea id="bodyInput" spellcheck="false"></textarea>
+    </div>
+
+    <div id="uploadCard" class="card" style="display:none;">
+      <h2>上传文件</h2>
+      <input id="fileInput" type="file" accept="image/*" />
+      <div class="sub" style="color:var(--muted);font-size:12px;margin-top:6px;">字段名固定为 <code>file</code>（multipart/form-data）</div>
+    </div>
+
+    <div class="actions">
+      <span class="spacer"></span>
+      <button class="ghost" id="resetBody">重置示例</button>
+      <button id="sendBtn">发送请求</button>
+    </div>
+
+    <div class="card">
+      <h2>响应</h2>
+      <div class="resp-meta">
+        <span id="respStatus" class="badge">—</span>
+        <span id="respTime" style="color:var(--muted)"></span>
+        <span id="respLen" style="color:var(--muted)"></span>
+      </div>
+      <pre id="respBody">等待发送请求...</pre>
+    </div>
+  </section>
+
+  <aside id="history">
+    <h2>请求历史 <button class="ghost" id="clearHistory" style="padding:2px 8px;font-size:11px;">清空</button></h2>
+    <div id="historyList"></div>
+  </aside>
+</main>
+
+<script>
+// ---------- 接口定义 ----------
+const ENDPOINTS = [
+  { g: "基础", name: "健康检查", m: "GET", path: "/api/health", desc: "服务状态与时间" },
+  { g: "预设文案", name: "预设列表", m: "GET", path: "/api/presets/list",
+    query: [
+      { k: "page", v: "1" }, { k: "page_size", v: "20" },
+      { k: "keyword", v: "" }, { k: "widget_type", v: "" },
+      { k: "field", v: "" }, { k: "lang", v: "" }, { k: "enabled", v: "" },
+    ],
+    desc: "分页 / 关键字 / 组件 / 字段 / 语言过滤" },
+  { g: "预设文案", name: "新建预设", m: "POST", path: "/api/presets/add",
+    body: { widget_type: "heading", field: "title", content: "Welcome" },
+    desc: "widget_type / field / content 必填，lang 缺省 en" },
+  { g: "预设文案", name: "更新预设", m: "POST", path: "/api/presets/update",
+    body: { id: "", content: "New content here" }, desc: "部分字段更新，body/query 传 id" },
+  { g: "预设文案", name: "删除预设", m: "POST", path: "/api/presets/delete",
+    body: { id: "" }, desc: "body/query 传 id 删除" },
+  { g: "预设文案", name: "应用到 Elementor 数据", m: "POST", path: "/api/presets/apply",
+    body: {
+      lang: "en",
+      elementor_data: [
+        { id: "a1", elType: "widget", widgetType: "button", settings: {} },
+        { id: "a2", elType: "widget", widgetType: "image", settings: {} },
+      ]
+    },
+    desc: "填充缺失/空白的文案与图片字段" },
+  { g: "媒体", name: "上传图片", m: "POST", path: "/api/media/upload", upload: true,
+    desc: "multipart/form-data，字段 file，≤20MB" },
+  { g: "媒体", name: "媒体列表", m: "GET", path: "/api/media/list",
+    query: [ { k: "page", v: "1" }, { k: "page_size", v: "20" }, { k: "keyword", v: "" } ],
+    desc: "分页 / 关键字" },
+  { g: "媒体", name: "媒体详情", m: "GET", path: "/api/media/:id",
+    params: [{ k: "id", v: "" }], desc: "按 id 查询" },
+  { g: "媒体", name: "删除媒体", m: "DELETE", path: "/api/media/:id",
+    params: [{ k: "id", v: "" }], desc: "同时删除磁盘文件" },
+];
+
+// ---------- 状态 ----------
+let current = null;
+const HISTORY_KEY = "api-debug-history";
+let history = [];
+try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); } catch { history = []; }
+
+const $ = (id) => document.getElementById(id);
+const str = (v) => v === undefined || v === null ? "" : String(v);
+
+// ---------- 端点列表 ----------
+function renderList() {
+  const nav = $("endpointList");
+  nav.innerHTML = "";
+  const groups = [];
+  for (const ep of ENDPOINTS) {
+    let grp = groups.find((g) => g.name === ep.g);
+    if (!grp) { grp = { name: ep.g, items: [] }; groups.push(grp); }
+    grp.items.push(ep);
+  }
+  for (const grp of groups) {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML = `<div class="group-title">${grp.name}</div>`;
+    for (const ep of grp.items) {
+      const item = document.createElement("div");
+      item.className = "ep";
+      item.dataset.idx = ENDPOINTS.indexOf(ep);
+      item.innerHTML = `<span class="m ${ep.m}">${ep.m}</span><div><span class="t">${ep.name}</span><span class="d">${ep.desc || ep.path}</span></div>`;
+      item.addEventListener("click", () => select(ep));
+      div.appendChild(item);
+    }
+    nav.appendChild(div);
+  }
+}
+
+// ---------- 选中接口 ----------
+function select(ep, preset = {}) {
+  current = ep;
+  document.querySelectorAll(".ep").forEach((el) => el.classList.remove("active"));
+  const items = document.querySelectorAll(".ep");
+  const idx = ENDPOINTS.indexOf(ep);
+  if (items[idx]) items[idx].classList.add("active");
+
+  const badge = $("methodBadge");
+  badge.textContent = ep.m;
+  badge.className = "m " + ep.m;
+
+  // 路径参数
+  const hasParams = !!(ep.params && ep.params.length);
+  $("pathParams").style.display = hasParams ? "" : "none";
+  const ppw = $("pathParamsWrap");
+  ppw.innerHTML = "";
+  if (hasParams) {
+    for (const p of ep.params) {
+      const lab = document.createElement("label");
+      lab.innerHTML = `<span>${p.k}</span>`;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.k = p.k;
+      input.value = preset[p.k] !== undefined ? preset[p.k] : (p.v || "");
+      input.placeholder = p.k;
+      input.addEventListener("input", renderUrl);
+      lab.appendChild(input);
+      ppw.appendChild(lab);
+    }
+  }
+
+  // 查询参数
+  const hasQuery = !!(ep.query && ep.query.length);
+  $("queryParams").style.display = hasQuery ? "" : "none";
+  const qpw = $("queryParamsWrap");
+  qpw.innerHTML = "";
+  if (hasQuery) {
+    for (const q of ep.query) {
+      const lab = document.createElement("label");
+      lab.innerHTML = `<span>${q.k}</span>`;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.dataset.k = q.k;
+      input.value = q.v || "";
+      if ((q.v || "") === "") input.placeholder = q.k;
+      input.addEventListener("input", renderUrl);
+      lab.appendChild(input);
+      qpw.appendChild(lab);
+    }
+  }
+
+  // Body / Upload
+  const isUpload = !!ep.upload;
+  $("bodyCard").style.display = isUpload ? "none" : (ep.body ? "" : "none");
+  $("uploadCard").style.display = isUpload ? "" : "none";
+  $("fileInput").value = "";
+  if (ep.body) $("bodyInput").value = JSON.stringify(ep.body, null, 2);
+
+  renderUrl();
+}
+
+function paramValues() {
+  const out = {};
+  document.querySelectorAll("#pathParamsWrap input").forEach((i) => (out[i.dataset.k] = i.value.trim()));
+  return out;
+}
+
+function renderUrl() {
+  if (!current) return;
+  let url = current.path;
+  document.querySelectorAll("#pathParamsWrap input").forEach((i) => {
+    url = url.replace(":" + i.dataset.k, encodeURIComponent(i.value.trim() || ("<" + i.dataset.k + ">")));
+  });
+  const qs = [];
+  document.querySelectorAll("#queryParamsWrap input").forEach((i) => {
+    const v = i.value.trim();
+    if (v !== "") qs.push(encodeURIComponent(i.dataset.k) + "=" + encodeURIComponent(v));
+  });
+  if (qs.length) url += "?" + qs.join("&");
+  $("urlLine").textContent = url;
+}
+
+// ---------- 发送 ----------
+async function send() {
+  if (!current) return;
+  const base = ($("baseUrl").value || "").replace(/\/+$/, "");
+  let url = current.path;
+  const pv = paramValues();
+  const missing = [];
+  for (const key of Object.keys(pv)) {
+    if (!pv[key]) { url = url.replace(":" + key, "<" + key + ">"); missing.push(key); }
+    else url = url.replace(":" + key, encodeURIComponent(pv[key]));
+  }
+  const qs = [];
+  document.querySelectorAll("#queryParamsWrap input").forEach((i) => {
+    const v = i.value.trim();
+    if (v !== "") qs.push(encodeURIComponent(i.dataset.k) + "=" + encodeURIComponent(v));
+  });
+  if (qs.length) url += "?" + qs.join("&");
+  const full = base + url;
+
+  $("respStatus").textContent = "…";
+  $("respStatus").className = "badge";
+  $("respTime").textContent = "";
+  $("respLen").textContent = "";
+
+  const started = performance.now();
+  try {
+    const opts = { method: current.m, headers: {} };
+    let payload;
+    if (current.upload) {
+      const file = $("fileInput").files[0];
+      if (!file) throw new Error("请先选择要上传的图片文件");
+      payload = new FormData();
+      payload.append("file", file);
+    } else if (current.body) {
+      try { payload = JSON.parse($("bodyInput").value); }
+      catch (err) { throw new Error("JSON 解析失败：" + err.message); }
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(payload);
+    }
+    const resp = await fetch(full, opts);
+    const ms = Math.round(performance.now() - started);
+    let text = await resp.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch { /* 非 JSON 原样展示 */ }
+
+    $("respStatus").textContent = resp.status;
+    $("respStatus").className = "badge " + (resp.ok ? "ok" : "err");
+    $("respTime").textContent = ms + " ms";
+    $("respLen").textContent = pretty.length + " chars";
+    $("respBody").textContent = pretty;
+
+    history.unshift({ ts: Date.now(), m: current.m, status: resp.status, url: full });
+    if (history.length > 50) history.length = 50;
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    renderHistory();
+  } catch (err) {
+    const ms = Math.round(performance.now() - started);
+    $("respStatus").textContent = "ERR";
+    $("respStatus").className = "badge err";
+    $("respTime").textContent = ms + " ms";
+    $("respBody").textContent = "请求失败：" + err.message;
+  }
+}
+
+// ---------- 历史 ----------
+function renderHistory() {
+  const box = $("historyList");
+  box.innerHTML = "";
+  if (!history.length) { box.innerHTML = '<div class="empty">暂无请求记录</div>'; return; }
+  for (const h of history) {
+    const item = document.createElement("div");
+    item.className = "h-item";
+    item.title = h.url;
+    const ok = h.status >= 200 && h.status < 400;
+    item.innerHTML = `<div class="r"><span class="m ${h.m}">${h.m}</span><span style="color:${ok ? "var(--green)" : "var(--red)"};font-weight:700;">${h.status}</span><span style="color:var(--muted);">${new Date(h.ts).toLocaleTimeString("zh-CN")}</span></div><div class="u">${h.url}</div>`;
+    item.addEventListener("click", () => {
+      // 依据方法+路径前缀尝试回填（尽力而为）
+      const target = ENDPOINTS.find((e) => e.m === h.m && h.url.includes(e.path.replace(/\/:[^/]+/g, "").replace(":id", "")));
+      if (target) select(target);
+      navigator.clipboard && navigator.clipboard.writeText(h.url).catch(() => {});
+    });
+    box.appendChild(item);
+  }
+}
+
+// ---------- 事件 ----------
+$("sendBtn").addEventListener("click", send);
+$("copyUrl").addEventListener("click", () => {
+  const base = ($("baseUrl").value || "").replace(/\/+$/, "");
+  const text = base + $("urlLine").textContent;
+  navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {});
+});
+$("resetBody").addEventListener("click", () => {
+  if (current && current.body) $("bodyInput").value = JSON.stringify(current.body, null, 2);
+});
+$("clearHistory").addEventListener("click", () => { history = []; localStorage.removeItem(HISTORY_KEY); renderHistory(); });
+$("baseUrl").addEventListener("input", renderUrl);
+
+// ---------- 初始化 ----------
+$("baseUrl").value = location.origin;
+renderList();
+renderHistory();
+select(ENDPOINTS[0]);
+</script>
+</body>
+</html>
+
+
