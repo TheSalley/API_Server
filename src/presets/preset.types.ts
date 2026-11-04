@@ -1,12 +1,25 @@
+export interface PresetText {
+  title: string;
+  content: string;
+}
+
+export interface PresetImage {
+  name: string;
+  url: string;
+}
+
+export interface PresetContent {
+  texts: PresetText[];
+  images: PresetImage[];
+}
+
 export interface PresetRecord {
   id: string;
-  widget_type: string;
-  field: string;
-  lang: string;
+  category: string;
+  category_name: string | null;
+  name: string;
+  description: string | null;
   content: string;
-  label: string | null;
-  field_type: string | null;
-  maxlength: number | null;
   sort: number;
   enabled: boolean;
   remark: string | null;
@@ -18,21 +31,23 @@ export interface PresetDbRow extends Omit<PresetRecord, "enabled"> {
   enabled: number;
 }
 
+export interface PresetView extends Omit<PresetRecord, "content"> {
+  content: PresetContent;
+}
+
 export interface PresetListOptions {
   page: number;
   pageSize: number;
-  widget_type?: string;
-  field?: string;
-  lang?: string;
+  category?: string;
   enabled?: boolean | null;
   keyword?: string;
 }
 
-export interface AppliedPreset {
-  node_id: string;
-  widget_type: string;
-  field: string;
-  lang: string;
-  content: unknown;
-  preset_id: string | null;
+export interface PresetCategoryRecord {
+  key: string;
+  name: string;
+  description: string | null;
+  sort: number;
+  created_at: string;
+  updated_at: string;
 }

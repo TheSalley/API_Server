@@ -5,165 +5,177 @@ import {
   NotFoundException,
   OnModuleInit,
 } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { AppConfig } from "../config/configuration.js";
 import { createId, nowIso } from "../common/utils/id.js";
-import { ApplyPresetsDto } from "./dto/apply-presets.dto.js";
-import { CreatePresetDto } from "./dto/create-preset.dto.js";
+import { CreatePresetCategoryDto } from "./dto/create-preset-category.dto.js";
+import { CreatePresetDto, PresetContentDto } from "./dto/create-preset.dto.js";
 import { ListPresetsQueryDto } from "./dto/list-presets-query.dto.js";
+import { UpdatePresetCategoryDto } from "./dto/update-preset-category.dto.js";
 import { UpdatePresetDto } from "./dto/update-preset.dto.js";
-import { applyPresetDefaults } from "./presets.apply.js";
+import {
+  PresetCategoryRecord,
+  PresetContent,
+  PresetRecord,
+  PresetView,
+} from "./preset.types.js";
 import { PresetsRepository } from "./presets.repository.js";
-import { PresetRecord } from "./preset.types.js";
-import { seedPresets } from "./presets.seed.js";
-import { fieldMetaOf, presetableFieldsOf } from "./widgets.js";
-
-interface FieldMeta {
-  label: string;
-  type: string;
-  maxlength?: number;
-}
+import { seedPresetCategories, seedPresets } from "./presets.seed.js";
 
 @Injectable()
 export class PresetsService implements OnModuleInit {
   private readonly logger = new Logger(PresetsService.name);
-  private readonly defaultLang: string;
-  private readonly supportedLangs: string[];
 
-  constructor(
-    private readonly repository: PresetsRepository,
-    config: ConfigService<AppConfig, true>,
-  ) {
-    this.defaultLang = config.get("defaultLang", { infer: true });
-    this.supportedLangs = config.get("supportedLangs", { infer: true });
-  }
+  constructor(private readonly repository: PresetsRepository) {}
 
   onModuleInit(): void {
-    if (this.repository.count() > 0) return;
-    const records = seedPresets();
-    this.repository.insertMany(records);
-    this.logger.log(`已写入 ${records.length} 条英文种子预设`);
+    if (this.repository.countCategories() === 0) {
+      const categories = seedPresetCategories();
+      this.repository.insertCategories(categories);
+      this.logger.log(`已写入 ${categories.length} 个预设分类`);
+    }
+    if (this.repository.count() === 0) {
+      const records = seedPresets();
+      this.repository.insertMany(records);
+      this.logger.log(`已写入 ${records.length} 条预设内容包`);
+    }
   }
 
   list(query: ListPresetsQueryDto) {
-    return this.repository.list({
+    const result = this.repository.list({
       page: query.page ?? 1,
       pageSize: query.page_size ?? 20,
-      widget_type: query.widget_type || undefined,
-      field: query.field || undefined,
-      lang: query.lang || undefined,
+      category: query.category || undefined,
       enabled: query.enabled ?? null,
       keyword: query.keyword || undefined,
     });
+    return { list: result.list.map((record) => this.toView(record)), total: result.total };
   }
 
-  create(dto: CreatePresetDto): PresetRecord {
-    const widgetType = this.required(dto.widget_type, "widget_type");
-    const field = this.required(dto.field, "field");
-    const lang = this.resolveLang(dto.lang);
-    const meta = this.resolveField(widgetType, field);
-    const content = dto.content;
-
-    this.validateContent(meta, content);
-    this.validateFieldMetadata(dto, meta);
-    if (this.repository.findByKey(widgetType, field, lang)) {
-      throw new BadRequestException("该组件/字段/语言的预设文案已存在，请使用更新接口");
+  create(dto: CreatePresetDto): PresetView {
+    const category = this.required(dto.category, "category");
+    this.ensureCategoryExists(category);
+    const name = this.required(dto.name, "name");
+    if (this.repository.findByKey(category, name)) {
+      throw new BadRequestException("该分类下已存在同名内容包，请使用更新接口");
     }
 
+    const content = this.normalizeContent(dto.content);
     const now = nowIso();
-    return this.repository.insert({
+    const record = this.repository.insert({
       id: createId("p_"),
-      widget_type: widgetType,
-      field,
-      lang,
-      content,
-      label: dto.label || meta.label,
-      field_type: meta.type,
-      maxlength: meta.maxlength ?? null,
+      category,
+      category_name: null,
+      name,
+      description: dto.description || null,
+      content: JSON.stringify(content),
       sort: dto.sort ?? 10,
       enabled: dto.enabled ?? true,
       remark: dto.remark || null,
       created_at: now,
       updated_at: now,
     });
+    return this.toView(record);
   }
 
-  update(idValue: string | undefined, dto: UpdatePresetDto): PresetRecord {
+  update(idValue: string | undefined, dto: UpdatePresetDto): PresetView {
     const id = this.required(idValue, "id");
     const existing = this.repository.findById(id);
-    if (!existing) throw new NotFoundException("预设文案不存在");
+    if (!existing) throw new NotFoundException("预设内容包不存在");
 
-    const widgetType = this.required(dto.widget_type ?? existing.widget_type, "widget_type");
-    const field = this.required(dto.field ?? existing.field, "field");
-    const lang = this.resolveLang(dto.lang ?? existing.lang);
-    const meta = this.resolveField(widgetType, field);
-    const content = dto.content ?? existing.content;
-
-    this.validateContent(meta, content);
-    this.validateFieldMetadata(dto, meta);
-
-    const duplicate = this.repository.findByKey(widgetType, field, lang);
+    const category = this.required(dto.category ?? existing.category, "category");
+    this.ensureCategoryExists(category);
+    const name = this.required(dto.name ?? existing.name, "name");
+    const duplicate = this.repository.findByKey(category, name);
     if (duplicate && duplicate.id !== id) {
-      throw new BadRequestException("该组件/字段/语言的预设文案已存在");
+      throw new BadRequestException("该分类下已存在同名内容包");
     }
 
-    const keyChanged = widgetType !== existing.widget_type || field !== existing.field;
-    const label =
-      dto.label !== undefined
-        ? dto.label || meta.label
-        : keyChanged
-          ? meta.label
-          : existing.label;
+    const content =
+      dto.content !== undefined
+        ? JSON.stringify(this.normalizeContent(dto.content))
+        : existing.content;
 
-    return this.repository.updateById(id, {
-      widget_type: widgetType,
-      field,
-      lang,
+    const updated = this.repository.updateById(id, {
+      category,
+      name,
+      description:
+        dto.description !== undefined ? dto.description || null : existing.description,
       content,
-      label,
-      field_type: meta.type,
-      maxlength: meta.maxlength ?? null,
       sort: dto.sort ?? existing.sort,
       enabled: dto.enabled ?? existing.enabled,
       remark: dto.remark !== undefined ? dto.remark || null : existing.remark,
     })!;
+    return this.toView(updated);
   }
 
   remove(idValue: string | undefined): { id: string } {
     const id = this.required(idValue, "id");
     const removed = this.repository.removeById(id);
-    if (!removed) throw new NotFoundException("预设文案不存在");
+    if (!removed) throw new NotFoundException("预设内容包不存在");
     return { id: removed.id };
   }
 
-  apply(dto: ApplyPresetsDto) {
-    const lang = this.resolveLang(dto.lang);
-    const presets = this.repository.all().filter((preset) => preset.enabled);
-    const result = applyPresetDefaults(dto.elementor_data, {
-      lang,
-      defaultLang: this.defaultLang,
-      presets,
+  listCategories(): PresetCategoryRecord[] {
+    return this.repository.allCategories();
+  }
+
+  createCategory(dto: CreatePresetCategoryDto): PresetCategoryRecord {
+    const name = this.required(dto.name, "name");
+    if (this.repository.findCategoryByName(name)) {
+      throw new BadRequestException("分类名称已存在");
+    }
+    const key = dto.key?.trim() || createId("cat_");
+    if (this.repository.findCategoryByKey(key)) {
+      throw new BadRequestException("分类 key 已存在");
+    }
+
+    const now = nowIso();
+    return this.repository.insertCategory({
+      key,
+      name,
+      description: dto.description || null,
+      sort: dto.sort ?? 10,
+      created_at: now,
+      updated_at: now,
     });
-    return { data: result.data, applied: result.applied, lang };
   }
 
-  private resolveField(widgetType: string, field: string): FieldMeta {
-    const meta = fieldMetaOf(widgetType, field) as FieldMeta | null;
-    const presettable = presetableFieldsOf(widgetType).some((item) => item.key === field);
-    if (!meta || !presettable) {
-      throw new BadRequestException(`不支持的组件/字段组合：${widgetType}.${field}`);
+  updateCategory(
+    keyValue: string | undefined,
+    dto: UpdatePresetCategoryDto,
+  ): PresetCategoryRecord {
+    const key = this.required(keyValue, "key");
+    const existing = this.repository.findCategoryByKey(key);
+    if (!existing) throw new NotFoundException("预设分类不存在");
+
+    const name = dto.name !== undefined ? this.required(dto.name, "name") : existing.name;
+    const duplicate = this.repository.findCategoryByName(name);
+    if (duplicate && duplicate.key !== key) {
+      throw new BadRequestException("分类名称已存在");
     }
-    return meta;
+
+    return this.repository.updateCategory(key, {
+      name,
+      description:
+        dto.description !== undefined ? dto.description || null : existing.description,
+      sort: dto.sort ?? existing.sort,
+    })!;
   }
 
-  private resolveLang(langValue: string | undefined): string {
-    const lang = (langValue || this.defaultLang).trim();
-    if (!this.supportedLangs.includes(lang)) {
-      throw new BadRequestException(
-        `不支持的 lang：${lang}（可选：${this.supportedLangs.join(", ")}）`,
-      );
+  removeCategory(keyValue: string | undefined): { key: string } {
+    const key = this.required(keyValue, "key");
+    const existing = this.repository.findCategoryByKey(key);
+    if (!existing) throw new NotFoundException("预设分类不存在");
+    if (this.repository.countByCategory(key) > 0) {
+      throw new BadRequestException("该分类下还有内容包，请先移走或删除");
     }
-    return lang;
+    this.repository.removeCategory(key);
+    return { key };
+  }
+
+  private ensureCategoryExists(category: string): void {
+    if (!this.repository.findCategoryByKey(category)) {
+      throw new BadRequestException(`分类不存在：${category}`);
+    }
   }
 
   private required(value: string | undefined, label: string): string {
@@ -172,38 +184,49 @@ export class PresetsService implements OnModuleInit {
     return normalized;
   }
 
-  private validateContent(meta: FieldMeta, content: string): void {
-    if (!content.trim()) throw new BadRequestException("content 不能为空");
-    if (meta.maxlength != null && content.length > meta.maxlength) {
-      throw new BadRequestException(`content 长度不能超过 ${meta.maxlength}`);
+  private normalizeContent(content: PresetContentDto): PresetContent {
+    const texts = (content.texts ?? [])
+      .map((item) => ({
+        title: (item.title || "").trim(),
+        content: (item.content || "").trim(),
+      }))
+      .filter((item) => item.content);
+
+    const images = (content.images ?? [])
+      .map((item) => ({
+        name: (item.name || "").trim(),
+        url: (item.url || "").trim(),
+      }))
+      .filter((item) => item.url);
+
+    for (const image of images) {
+      if (!image.url.startsWith("/") && !/^https?:\/\//i.test(image.url)) {
+        throw new BadRequestException(
+          `图片地址必须是绝对 URL 或以 / 开头的站内 URL：${image.url}`,
+        );
+      }
     }
-    if (meta.type === "number" && !Number.isFinite(Number(content))) {
-      throw new BadRequestException("数字字段的 content 必须是数字");
+
+    if (texts.length === 0 && images.length === 0) {
+      throw new BadRequestException("content 至少要包含一条文案或一张图片");
     }
-    if (
-      meta.type === "image" &&
-      !content.trim().startsWith("/") &&
-      !/^https?:\/\//i.test(content.trim())
-    ) {
-      throw new BadRequestException("图片字段的 content 必须是绝对 URL 或以 / 开头的站内 URL");
-    }
+    return { texts, images };
   }
 
-  private validateFieldMetadata(
-    dto: CreatePresetDto | UpdatePresetDto,
-    meta: FieldMeta,
-  ): void {
-    if (dto.field_type !== undefined && dto.field_type !== meta.type) {
-      throw new BadRequestException(`field_type 与字段定义不一致，应为 ${meta.type}`);
-    }
-    if (
-      dto.maxlength !== undefined &&
-      dto.maxlength !== null &&
-      dto.maxlength !== (meta.maxlength ?? null)
-    ) {
-      throw new BadRequestException(
-        `maxlength 与字段定义不一致，应为 ${meta.maxlength ?? "null"}`,
-      );
+  private toView(record: PresetRecord): PresetView {
+    const { content, ...rest } = record;
+    return { ...rest, content: this.parseContent(content) };
+  }
+
+  private parseContent(value: string): PresetContent {
+    try {
+      const parsed = JSON.parse(value) as Partial<PresetContent>;
+      return {
+        texts: Array.isArray(parsed?.texts) ? parsed.texts : [],
+        images: Array.isArray(parsed?.images) ? parsed.images : [],
+      };
+    } catch {
+      return { texts: [], images: [] };
     }
   }
 }

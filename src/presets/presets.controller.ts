@@ -1,10 +1,12 @@
 import { Body, Controller, Get, HttpCode, Post, Query } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ResponseMessage } from "../common/http/api-response.js";
-import { ApplyPresetsDto } from "./dto/apply-presets.dto.js";
+import { CreatePresetCategoryDto } from "./dto/create-preset-category.dto.js";
 import { CreatePresetDto } from "./dto/create-preset.dto.js";
+import { DeletePresetCategoryDto } from "./dto/delete-preset-category.dto.js";
 import { DeletePresetDto } from "./dto/delete-preset.dto.js";
 import { ListPresetsQueryDto } from "./dto/list-presets-query.dto.js";
+import { UpdatePresetCategoryDto } from "./dto/update-preset-category.dto.js";
 import { UpdatePresetDto } from "./dto/update-preset.dto.js";
 import { PresetsService } from "./presets.service.js";
 
@@ -14,7 +16,7 @@ export class PresetsController {
   constructor(private readonly presetsService: PresetsService) {}
 
   @Get("list")
-  @ApiOperation({ summary: "预设文案列表" })
+  @ApiOperation({ summary: "预设内容包列表" })
   list(@Query() query: ListPresetsQueryDto) {
     return this.presetsService.list(query);
   }
@@ -22,7 +24,7 @@ export class PresetsController {
   @Post("add")
   @HttpCode(200)
   @ResponseMessage("创建成功")
-  @ApiOperation({ summary: "新建预设文案" })
+  @ApiOperation({ summary: "新建预设内容包" })
   create(@Body() dto: CreatePresetDto) {
     return this.presetsService.create(dto);
   }
@@ -30,7 +32,7 @@ export class PresetsController {
   @Post("update")
   @HttpCode(200)
   @ResponseMessage("更新成功")
-  @ApiOperation({ summary: "更新预设文案" })
+  @ApiOperation({ summary: "更新预设内容包" })
   update(@Body() dto: UpdatePresetDto, @Query("id") queryId?: string) {
     return this.presetsService.update(dto.id ?? queryId, dto);
   }
@@ -38,16 +40,41 @@ export class PresetsController {
   @Post("delete")
   @HttpCode(200)
   @ResponseMessage("删除成功")
-  @ApiOperation({ summary: "删除预设文案" })
+  @ApiOperation({ summary: "删除预设内容包" })
   remove(@Body() dto: DeletePresetDto, @Query("id") queryId?: string) {
     return this.presetsService.remove(dto?.id ?? queryId);
   }
 
-  @Post("apply")
+  @Get("categories")
+  @ApiOperation({ summary: "预设分类列表" })
+  listCategories() {
+    return this.presetsService.listCategories();
+  }
+
+  @Post("categories/add")
   @HttpCode(200)
-  @ResponseMessage("应用完成")
-  @ApiOperation({ summary: "将预设应用到 Elementor 数据" })
-  apply(@Body() dto: ApplyPresetsDto) {
-    return this.presetsService.apply(dto);
+  @ResponseMessage("创建成功")
+  @ApiOperation({ summary: "新建预设分类" })
+  createCategory(@Body() dto: CreatePresetCategoryDto) {
+    return this.presetsService.createCategory(dto);
+  }
+
+  @Post("categories/update")
+  @HttpCode(200)
+  @ResponseMessage("更新成功")
+  @ApiOperation({ summary: "更新预设分类" })
+  updateCategory(@Body() dto: UpdatePresetCategoryDto, @Query("key") queryKey?: string) {
+    return this.presetsService.updateCategory(dto.key ?? queryKey, dto);
+  }
+
+  @Post("categories/delete")
+  @HttpCode(200)
+  @ResponseMessage("删除成功")
+  @ApiOperation({ summary: "删除预设分类" })
+  removeCategory(
+    @Body() dto: DeletePresetCategoryDto,
+    @Query("key") queryKey?: string,
+  ) {
+    return this.presetsService.removeCategory(dto?.key ?? queryKey);
   }
 }

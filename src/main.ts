@@ -43,9 +43,9 @@ async function bootstrap(): Promise<void> {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle("material_collect_system API")
-    .setDescription("预设文案、媒体库与 Elementor 数据填充接口")
+    .setDescription("预设内容包、预设分类与媒体库接口")
     .setVersion("1.0.0")
-    .addTag("presets", "预设文案")
+    .addTag("presets", "预设内容包")
     .addTag("media", "媒体库")
     .addTag("health", "健康检查")
     .build();

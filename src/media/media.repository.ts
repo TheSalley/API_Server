@@ -50,9 +50,10 @@ export class MediaRepository {
   }
 
   countPresetReferences(url: string): number {
+    // 预设内容以 JSON 保存，图片地址写在 content.images[].url 中
     const row = this.db
-      .prepare("SELECT COUNT(*) AS count FROM presets WHERE content = ?")
-      .get(url) as { count: number };
+      .prepare("SELECT COUNT(*) AS count FROM presets WHERE content LIKE ?")
+      .get(`%\"url\":\"${url}\"%`) as { count: number };
     return Number(row.count);
   }
 

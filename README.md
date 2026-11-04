@@ -1,6 +1,6 @@
 # material_collect_system API Server
 
-`material_collect_system` 的后端接口，提供预设文案、Elementor 数据填充、媒体图片库和 API 调试面板。
+`material_collect_system` 的后端接口，提供预设内容包、预设分类、媒体图片库和 API 调试面板。
 
 ## 技术栈
 
@@ -44,7 +44,7 @@ npm start
 npm run start:dev
 ```
 
-首次启动会自动创建数据库表、迁移记录和 16 条英文种子预设。运行时目录（数据库、WAL、上传文件）已被 `.gitignore` 排除。
+首次启动会自动创建数据库表、迁移记录、5 个行业分类和 9 条内容包种子数据。运行时目录（数据库、WAL、上传文件）已被 `.gitignore` 排除。
 
 ## 脚本
 
@@ -96,7 +96,7 @@ src/
 ├── health/                       # GET /api/health
 ├── media/                        # 上传、媒体库、文件头校验
 ├── panel/                        # /panel 调试面板
-├── presets/                      # 预设 CRUD、Elementor apply
+├── presets/                      # 预设内容包与分类 CRUD
 ├── public/index.html
 ├── data/app.db                   # 运行时生成，不提交
 └── data/uploads/                 # 运行时生成，不提交
@@ -104,53 +104,58 @@ src/
 
 ## API
 
-### 预设文案
+### 预设内容包
+
+预设 = 行业分类 + 内容包。内容包不再绑定 Elementor 组件字段，`content` 直接保存文本与图片素材的 JSON 集合。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/presets/list` | 分页与过滤：`page`、`page_size`、`keyword`、`widget_type`、`field`、`lang`、`enabled` |
-| `POST` | `/api/presets/add` | 新建预设 |
-| `POST` | `/api/presets/update` | 更新预设，`id` 可放在 body 或 query |
-| `POST` | `/api/presets/delete` | 删除预设，`id` 可放在 body 或 query |
-| `POST` | `/api/presets/apply` | 将预设应用到 Elementor `elementor_data` |
+| `GET` | `/api/presets/list` | 分页与过滤：`page`、`page_size`、`keyword`、`category`、`enabled` |
+| `POST` | `/api/presets/add` | 新建内容包 |
+| `POST` | `/api/presets/update` | 更新内容包，`id` 可放在 body 或 query |
+| `POST` | `/api/presets/delete` | 删除内容包，`id` 可放在 body 或 query |
+| `GET` | `/api/presets/categories` | 分类列表 |
+| `POST` | `/api/presets/categories/add` | 新建分类，`key` 可省略并自动生成 |
+| `POST` | `/api/presets/categories/update` | 更新分类，`key` 可放在 body 或 query |
+| `POST` | `/api/presets/categories/delete` | 删除分类，分类下仍有内容包时返回 `400` |
 
 新建示例：
 
 ```json
 {
-  "widget_type": "heading",
-  "field": "title",
-  "content": "Welcome",
-  "lang": "en"
+  "category": "common",
+  "name": "通用首页",
+  "description": "不区分行业的通用素材",
+  "content": {
+    "texts": [
+      { "title": "主标题", "content": "把复杂留给我们，把简单交给你" }
+    ],
+    "images": [
+      { "name": "主视觉", "url": "/seed/home1.svg" }
+    ]
+  },
+  "sort": 10,
+  "enabled": true
 }
 ```
 
-服务端会根据组件字段 Schema 自动补全 `label`、`field_type` 和 `maxlength`，并校验字段组合、文本长度、数字字段和图片 URL。
+内容规则：
 
-`apply` 示例：
+- `category` 必须是已存在的分类 key
+- `content.texts` 与 `content.images` 至少一项包含有效内容
+- 图片 URL 支持 `http(s)://` 或以 `/` 开头的站内路径
+- 同一分类下内容包名称唯一（`category + name`）
+
+分类示例：
 
 ```json
 {
-  "lang": "en",
-  "elementor_data": [
-    {
-      "id": "a1",
-      "elType": "widget",
-      "widgetType": "button",
-      "settings": {}
-    }
-  ]
+  "key": "common",
+  "name": "通用",
+  "description": "不区分行业的通用素材",
+  "sort": 10
 }
 ```
-
-`apply` 规则：
-
-- 只填充缺失或空白的字段，不覆盖已有内容
-- 跳过存在 `hide_desktop` 设置的节点
-- 跳过包含真实 `__dynamic__` 绑定的节点
-- 优先匹配请求语言；未命中时仅回退到 `DEFAULT_LANG`
-- 数字预设写入 number，图片预设写入媒体库对象 `{ url, id, size, alt, source }`
-- 空的内置默认值不会写入，也不会出现在 `applied` 结果中
 
 ### 媒体
 
@@ -161,6 +166,7 @@ src/
 | `GET` | `/api/media/:id` | 媒体详情 |
 | `DELETE` | `/api/media/:id` | 删除记录与磁盘文件 |
 | `GET` | `/uploads/*` | 访问已上传图片 |
+| `GET` | `/seed/*.svg` | 访问内置示例图片 |
 
 上传安全策略：
 
@@ -168,8 +174,9 @@ src/
 - 支持 JPEG、PNG、GIF、WebP、BMP、AVIF
 - 默认不开放 SVG；即使通过环境变量开放，也应在上层增加内容清洗
 - 上传文件使用随机文件名和 `wx` 排他写入，避免覆盖已有文件
+- 图片本体保存在 `UPLOAD_DIR`；数据库只保存图片 URL 和媒体元数据
 - 删除时校验磁盘路径只能位于 `UPLOAD_DIR` 内
-- 图片仍被预设文案引用时返回 `409`，避免产生失效资源
+- 图片仍被预设内容包引用时返回 `409`，避免产生失效资源
 
 ### 健康检查
 
@@ -182,7 +189,7 @@ src/
 数据库初始化由 `DatabaseService` 管理：
 
 - `schema_migrations` 记录已执行迁移版本
-- 当前迁移创建 `presets`、`media` 表和预设唯一索引
+- 当前迁移创建 `presets`、`preset_categories`、`media` 表，索引为 `category + name`
 - 已存在的数据目录和表不会被删除
 - 应用关闭时主动关闭 SQLite 连接
 
@@ -209,4 +216,4 @@ e2e 测试使用 `.e2e-runtime/` 下的临时数据库和上传目录，结束�
 
 ## 与现有前端的关系
 
-本项目的调试面板和预设接口使用 `/api/presets/*`。`material_collect_system` 现有的媒体客户端使用 `/api/media/save`、`/api/media/get`、`/api/media/delete`，与本项目当前 `/api/media/upload|list|:id` 路由不同。本次后端迁移没有修改前端调用；接入前需要在客户端做路由映射，或在后端增加兼容适配层。
+本项目的调试面板和预设接口使用 `/api/presets/*`。`material_collect_system` 的预设内容页与页面编辑素材弹窗通过 `VITE_PRESET_API_BASE_URL` 接入这些接口。媒体客户端仍使用 `/api/media/save`、`/api/media/get`、`/api/media/delete`，与本项目当前 `/api/media/upload|list|:id` 路由不同；接入前需要在客户端做路由映射，或在后端增加兼容适配层。

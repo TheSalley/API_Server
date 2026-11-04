@@ -10,15 +10,15 @@ coverage/
 .e2e-runtime/
 
 # env
-.env
-.env.local
+# .env
+# .env.local
 
 # runtime data (SQLite + uploads)
-src/data/*.db
-src/data/*.db-journal
-src/data/*.db-shm
-src/data/*.db-wal
-src/data/uploads/
+# src/data/*.db
+# src/data/*.db-journal
+# src/data/*.db-shm
+# src/data/*.db-wal
+# src/data/uploads/
 
 # logs
 *.log

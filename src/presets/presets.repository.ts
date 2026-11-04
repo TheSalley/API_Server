@@ -1,17 +1,19 @@
 import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../common/database/database.service.js";
 import { nowIso } from "../common/utils/id.js";
-import { PresetDbRow, PresetListOptions, PresetRecord } from "./preset.types.js";
+import {
+  PresetCategoryRecord,
+  PresetDbRow,
+  PresetListOptions,
+  PresetRecord,
+} from "./preset.types.js";
 
 const INSERT_COLUMNS = [
   "id",
-  "widget_type",
-  "field",
-  "lang",
+  "category",
+  "name",
+  "description",
   "content",
-  "label",
-  "field_type",
-  "maxlength",
   "sort",
   "enabled",
   "remark",
@@ -20,21 +22,33 @@ const INSERT_COLUMNS = [
 ] as const;
 
 const UPDATE_COLUMNS = [
-  "widget_type",
-  "field",
-  "lang",
+  "category",
+  "name",
+  "description",
   "content",
-  "label",
-  "field_type",
-  "maxlength",
   "sort",
   "enabled",
   "remark",
 ] as const;
 
+const CATEGORY_INSERT_COLUMNS = [
+  "key",
+  "name",
+  "description",
+  "sort",
+  "created_at",
+  "updated_at",
+] as const;
+
 const INSERT_SQL = `
   INSERT INTO presets (${INSERT_COLUMNS.join(", ")})
   VALUES (${INSERT_COLUMNS.map(() => "?").join(", ")})
+`;
+
+const SELECT_SQL = `
+  SELECT p.*, c.name AS category_name
+  FROM presets p
+  LEFT JOIN preset_categories c ON c.key = p.category
 `;
 
 function mapRow(row: PresetDbRow | undefined): PresetRecord | null {
@@ -45,13 +59,10 @@ function mapRow(row: PresetDbRow | undefined): PresetRecord | null {
 function bindValues(record: PresetRecord): Array<string | number | null> {
   return [
     record.id,
-    record.widget_type,
-    record.field,
-    record.lang,
+    record.category,
+    record.name,
+    record.description,
     record.content,
-    record.label,
-    record.field_type,
-    record.maxlength,
     record.sort,
     record.enabled ? 1 : 0,
     record.remark,
@@ -73,24 +84,17 @@ export class PresetsRepository {
     return Number(row.count);
   }
 
-  all(): PresetRecord[] {
-    const rows = this.db
-      .prepare("SELECT * FROM presets ORDER BY sort ASC, created_at DESC")
-      .all() as unknown as PresetDbRow[];
-    return rows.map((row) => mapRow(row)!);
-  }
-
   findById(id: string): PresetRecord | null {
     const row = this.db
-      .prepare("SELECT * FROM presets WHERE id = ?")
+      .prepare(`${SELECT_SQL} WHERE p.id = ?`)
       .get(id) as unknown as PresetDbRow | undefined;
     return mapRow(row);
   }
 
-  findByKey(widgetType: string, field: string, lang: string): PresetRecord | null {
+  findByKey(category: string, name: string): PresetRecord | null {
     const row = this.db
-      .prepare("SELECT * FROM presets WHERE widget_type = ? AND field = ? AND lang = ?")
-      .get(widgetType, field, lang) as unknown as PresetDbRow | undefined;
+      .prepare(`${SELECT_SQL} WHERE p.category = ? AND p.name = ?`)
+      .get(category, name) as unknown as PresetDbRow | undefined;
     return mapRow(row);
   }
 
@@ -144,25 +148,17 @@ export class PresetsRepository {
     const where: string[] = [];
     const params: Array<string | number> = [];
 
-    if (options.widget_type) {
-      where.push("widget_type = ?");
-      params.push(options.widget_type);
-    }
-    if (options.field) {
-      where.push("field = ?");
-      params.push(options.field);
-    }
-    if (options.lang) {
-      where.push("lang = ?");
-      params.push(options.lang);
+    if (options.category) {
+      where.push("p.category = ?");
+      params.push(options.category);
     }
     if (options.enabled !== undefined && options.enabled !== null) {
-      where.push("enabled = ?");
+      where.push("p.enabled = ?");
       params.push(options.enabled ? 1 : 0);
     }
     if (options.keyword) {
       where.push(
-        "(widget_type LIKE ? OR field LIKE ? OR lang LIKE ? OR content LIKE ? OR label LIKE ? OR remark LIKE ?)",
+        "(p.category LIKE ? OR p.name LIKE ? OR p.description LIKE ? OR p.content LIKE ? OR p.remark LIKE ? OR c.name LIKE ?)",
       );
       const keyword = `%${options.keyword}%`;
       params.push(keyword, keyword, keyword, keyword, keyword, keyword);
@@ -170,14 +166,130 @@ export class PresetsRepository {
 
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const totalRow = this.db
-      .prepare(`SELECT COUNT(*) AS count FROM presets ${whereSql}`)
+      .prepare(
+        `SELECT COUNT(*) AS count FROM presets p LEFT JOIN preset_categories c ON c.key = p.category ${whereSql}`,
+      )
       .get(...params) as { count: number };
     const rows = this.db
       .prepare(
-        `SELECT * FROM presets ${whereSql} ORDER BY sort ASC, created_at DESC LIMIT ? OFFSET ?`,
+        `${SELECT_SQL} ${whereSql} ORDER BY p.sort ASC, p.created_at DESC LIMIT ? OFFSET ?`,
       )
       .all(...params, options.pageSize, (options.page - 1) * options.pageSize) as unknown as PresetDbRow[];
 
     return { list: rows.map((row) => mapRow(row)!), total: Number(totalRow.count) };
+  }
+
+  countCategories(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS count FROM preset_categories")
+      .get() as { count: number };
+    return Number(row.count);
+  }
+
+  allCategories(): PresetCategoryRecord[] {
+    return this.db
+      .prepare(
+        "SELECT key, name, description, sort, created_at, updated_at FROM preset_categories ORDER BY sort ASC, created_at ASC",
+      )
+      .all() as unknown as PresetCategoryRecord[];
+  }
+
+  findCategoryByKey(key: string): PresetCategoryRecord | null {
+    const row = this.db
+      .prepare(
+        "SELECT key, name, description, sort, created_at, updated_at FROM preset_categories WHERE key = ?",
+      )
+      .get(key) as unknown as PresetCategoryRecord | undefined;
+    return row ?? null;
+  }
+
+  findCategoryByName(name: string): PresetCategoryRecord | null {
+    const row = this.db
+      .prepare(
+        "SELECT key, name, description, sort, created_at, updated_at FROM preset_categories WHERE name = ?",
+      )
+      .get(name) as unknown as PresetCategoryRecord | undefined;
+    return row ?? null;
+  }
+
+  countByCategory(category: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS count FROM presets WHERE category = ?")
+      .get(category) as { count: number };
+    return Number(row.count);
+  }
+
+  insertCategory(record: PresetCategoryRecord): PresetCategoryRecord {
+    this.db
+      .prepare(
+        `INSERT INTO preset_categories (${CATEGORY_INSERT_COLUMNS.join(", ")})
+         VALUES (${CATEGORY_INSERT_COLUMNS.map(() => "?").join(", ")})`,
+      )
+      .run(
+        record.key,
+        record.name,
+        record.description,
+        record.sort,
+        record.created_at,
+        record.updated_at,
+      );
+    return this.findCategoryByKey(record.key)!;
+  }
+
+  insertCategories(records: PresetCategoryRecord[]): void {
+    const insert = this.db.prepare(
+      `INSERT INTO preset_categories (${CATEGORY_INSERT_COLUMNS.join(", ")})
+       VALUES (${CATEGORY_INSERT_COLUMNS.map(() => "?").join(", ")})`,
+    );
+    this.db.exec("BEGIN");
+    try {
+      for (const record of records) {
+        insert.run(
+          record.key,
+          record.name,
+          record.description,
+          record.sort,
+          record.created_at,
+          record.updated_at,
+        );
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  updateCategory(
+    key: string,
+    patch: Partial<Pick<PresetCategoryRecord, "name" | "description" | "sort">>,
+  ): PresetCategoryRecord | null {
+    const existing = this.findCategoryByKey(key);
+    if (!existing) return null;
+
+    const columns = (["name", "description", "sort"] as const).filter(
+      (column) => patch[column] !== undefined,
+    );
+    if (columns.length > 0) {
+      const setClauses = columns.map((column) => `${column} = ?`);
+      const values: Array<string | number | null> = columns.map(
+        (column) => patch[column] as string | number | null,
+      );
+      setClauses.push("updated_at = ?");
+      values.push(nowIso());
+      values.push(key);
+      this.db
+        .prepare(`UPDATE preset_categories SET ${setClauses.join(", ")} WHERE key = ?`)
+        .run(...values);
+    }
+
+    return this.findCategoryByKey(key);
+  }
+
+  removeCategory(key: string): PresetCategoryRecord | null {
+    const existing = this.findCategoryByKey(key);
+    if (!existing) return null;
+    this.db.prepare("DELETE FROM preset_categories WHERE key = ?").run(key);
+    return existing;
   }
 }

@@ -1,33 +1,22 @@
 import { BadRequestException } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { describe, expect, it, jest } from "@jest/globals";
-import { AppConfig } from "../config/configuration.js";
 import { CreatePresetDto } from "./dto/create-preset.dto.js";
 import { UpdatePresetDto } from "./dto/update-preset.dto.js";
-import { PresetRecord } from "./preset.types.js";
+import { PresetCategoryRecord, PresetRecord } from "./preset.types.js";
 import { PresetsRepository } from "./presets.repository.js";
 import { PresetsService } from "./presets.service.js";
-
-function configService(): ConfigService<AppConfig, true> {
-  const values: Partial<AppConfig> = {
-    defaultLang: "en",
-    supportedLangs: ["en"],
-  };
-  return {
-    get: (key: keyof AppConfig) => values[key],
-  } as unknown as ConfigService<AppConfig, true>;
-}
 
 function record(overrides: Partial<PresetRecord> = {}): PresetRecord {
   return {
     id: "p_1",
-    widget_type: "button",
-    field: "text",
-    lang: "en",
-    content: "Go",
-    label: "按钮文案",
-    field_type: "text",
-    maxlength: 50,
+    category: "common",
+    category_name: "通用",
+    name: "通用首页",
+    description: "通用素材",
+    content: JSON.stringify({
+      texts: [{ title: "主张", content: "把复杂留给我们" }],
+      images: [{ name: "主图", url: "https://example.com/a.png" }],
+    }),
     sort: 10,
     enabled: true,
     remark: null,
@@ -37,103 +26,139 @@ function record(overrides: Partial<PresetRecord> = {}): PresetRecord {
   };
 }
 
+function category(overrides: Partial<PresetCategoryRecord> = {}): PresetCategoryRecord {
+  return {
+    key: "common",
+    name: "通用",
+    description: "通用素材",
+    sort: 10,
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function createService(repository: Partial<PresetsRepository> = {}) {
   const repo = {
     count: jest.fn(() => 1),
+    countCategories: jest.fn(() => 1),
     findByKey: jest.fn(() => null),
     findById: jest.fn(() => null),
     insert: jest.fn((value: PresetRecord) => value),
-    updateById: jest.fn((_id: string, value: Partial<PresetRecord>) =>
-      record(value as Partial<PresetRecord>),
+    updateById: jest.fn((_id: string, value: Partial<PresetRecord>) => record(value)),
+    findCategoryByKey: jest.fn(() => category()),
+    findCategoryByName: jest.fn(() => null),
+    countByCategory: jest.fn(() => 0),
+    insertCategory: jest.fn((value: PresetCategoryRecord) => value),
+    updateCategory: jest.fn((_key: string, value: Partial<PresetCategoryRecord>) =>
+      category(value),
     ),
-    all: jest.fn(() => []),
+    removeCategory: jest.fn(() => category()),
     ...repository,
   } as unknown as PresetsRepository;
-  return { service: new PresetsService(repo, configService()), repo };
+  return { service: new PresetsService(repo), repo };
 }
 
 describe("PresetsService", () => {
-  it("completes label, field type and maxlength from the widget schema", () => {
+  it("stores texts and images as a JSON content package", () => {
     const { service, repo } = createService();
-    service.create({
-      widget_type: "button",
-      field: "text",
-      content: "Go",
+    const result = service.create({
+      category: "common",
+      name: "通用首页",
+      description: "不区分行业",
+      content: {
+        texts: [{ title: "主标题", content: "把复杂留给我们" }],
+        images: [{ name: "主视觉", url: "https://example.com/banner.png" }],
+      },
     } as CreatePresetDto);
 
     expect(repo.insert).toHaveBeenCalledWith(
       expect.objectContaining({
-        widget_type: "button",
-        field: "text",
-        content: "Go",
-        label: "按钮文案",
-        field_type: "text",
-        maxlength: 50,
+        category: "common",
+        name: "通用首页",
+        description: "不区分行业",
+        content: JSON.stringify({
+          texts: [{ title: "主标题", content: "把复杂留给我们" }],
+          images: [{ name: "主视觉", url: "https://example.com/banner.png" }],
+        }),
         enabled: true,
       }),
     );
+    expect(result.content.texts[0].content).toBe("把复杂留给我们");
   });
 
-  it("rejects unsupported widget/field combinations and language values", () => {
+  it("rejects unknown categories, duplicate names and empty content", () => {
+    const { service } = createService({
+      findCategoryByKey: jest.fn(() => null),
+    } as Partial<PresetsRepository>);
+    expect(() =>
+      service.create({
+        category: "missing",
+        name: "包名",
+        content: { texts: [{ title: "标题", content: "内容" }] },
+      } as CreatePresetDto),
+    ).toThrow(BadRequestException);
+
+    const duplicate = createService({
+      findByKey: jest.fn(() => record()),
+    } as Partial<PresetsRepository>).service;
+    expect(() =>
+      duplicate.create({
+        category: "common",
+        name: "通用首页",
+        content: { texts: [{ title: "标题", content: "内容" }] },
+      } as CreatePresetDto),
+    ).toThrow(BadRequestException);
+
+    const { service: emptyService } = createService();
+    expect(() =>
+      emptyService.create({
+        category: "common",
+        name: "空包",
+        content: { texts: [], images: [] },
+      } as CreatePresetDto),
+    ).toThrow(BadRequestException);
+  });
+
+  it("rejects invalid image urls", () => {
     const { service } = createService();
     expect(() =>
       service.create({
-        widget_type: "heading",
-        field: "not-a-field",
-        content: "Hello",
-      } as CreatePresetDto),
-    ).toThrow(BadRequestException);
-
-    expect(() =>
-      service.create({
-        widget_type: "button",
-        field: "text",
-        content: "Go",
-        lang: "fr",
+        category: "common",
+        name: "坏图片",
+        content: { images: [{ name: "图", url: "not-a-url" }] },
       } as CreatePresetDto),
     ).toThrow(BadRequestException);
   });
 
-  it("rejects non-numeric values for numeric fields", () => {
-    const { service } = createService();
-    expect(() =>
-      service.create({
-        widget_type: "counter",
-        field: "ending_number",
-        content: "not-a-number",
-      } as CreatePresetDto),
-    ).toThrow(BadRequestException);
-  });
-
-  it("refreshes label and field metadata when the widget key changes", () => {
-    const existing = record({
-      id: "p_1",
-      widget_type: "heading",
-      field: "title",
-      content: "Old title",
-      label: "标题",
-      field_type: "text",
-      maxlength: 100,
-    });
+  it("updates the content package JSON", () => {
+    const existing = record();
     const { service, repo } = createService({
       findById: jest.fn(() => existing),
     } as Partial<PresetsRepository>);
 
     service.update("p_1", {
-      widget_type: "button",
-      field: "text",
-      content: "Go",
+      content: {
+        texts: [{ title: "新主张", content: "更新后的文案" }],
+        images: [],
+      },
     } as UpdatePresetDto);
 
     expect(repo.updateById).toHaveBeenCalledWith(
       "p_1",
       expect.objectContaining({
-        widget_type: "button",
-        field: "text",
-        label: "按钮文案",
-        field_type: "text",
-        maxlength: 50,
+        content: JSON.stringify({
+          texts: [{ title: "新主张", content: "更新后的文案" }],
+          images: [],
+        }),
       }),
     );
+  });
+
+  it("does not delete a category that still has content packages", () => {
+    const { service } = createService({
+      countByCategory: jest.fn(() => 2),
+    } as Partial<PresetsRepository>);
+    expect(() => service.removeCategory("common")).toThrow(BadRequestException);
   });
 });

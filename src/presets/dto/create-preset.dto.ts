@@ -1,22 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
-  IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
-  Min,
+  ValidateNested,
 } from "class-validator";
-
-export const PRESET_FIELD_TYPES = [
-  "text",
-  "textarea",
-  "rich",
-  "number",
-  "image",
-];
 
 const trimString = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
@@ -26,53 +20,82 @@ const toBoolean = ({ value }: { value: unknown }) => {
   return value === true || value === "true" || value === "1" || value === 1;
 };
 
-export class CreatePresetDto {
-  @ApiProperty({ example: "button" })
+export class PresetTextDto {
+  @ApiPropertyOptional({ example: "主标题" })
   @Transform(trimString)
   @IsString()
-  @MaxLength(100)
-  widget_type!: string;
+  @MaxLength(200)
+  @IsOptional()
+  title?: string;
 
-  @ApiProperty({ example: "text" })
+  @ApiProperty({ example: "把复杂留给我们，把简单交给你" })
   @Transform(trimString)
   @IsString()
-  @MaxLength(100)
-  field!: string;
-
-  @ApiProperty({ example: "Learn More" })
-  @Transform(({ value }) =>
-    typeof value === "string" || typeof value === "number"
-      ? String(value)
-      : value,
-  )
-  @IsString()
+  @MaxLength(20000)
   content!: string;
+}
 
-  @ApiPropertyOptional({ example: "en" })
+export class PresetImageDto {
+  @ApiPropertyOptional({ example: "主视觉" })
   @Transform(trimString)
   @IsString()
-  @MaxLength(20)
+  @MaxLength(200)
   @IsOptional()
-  lang?: string;
+  name?: string;
 
-  @ApiPropertyOptional({ example: "按钮文案" })
+  @ApiProperty({ example: "https://example.com/banner.png" })
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(2000)
+  url!: string;
+}
+
+export class PresetContentDto {
+  @ApiPropertyOptional({ type: [PresetTextDto] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => PresetTextDto)
+  @IsOptional()
+  texts?: PresetTextDto[];
+
+  @ApiPropertyOptional({ type: [PresetImageDto] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => PresetImageDto)
+  @IsOptional()
+  images?: PresetImageDto[];
+}
+
+export class CreatePresetDto {
+  @ApiProperty({ example: "common", description: "行业分类 key" })
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(50)
+  category!: string;
+
+  @ApiProperty({ example: "通用首页" })
   @Transform(trimString)
   @IsString()
   @MaxLength(100)
-  @IsOptional()
-  label?: string;
+  name!: string;
 
-  @ApiPropertyOptional({ enum: PRESET_FIELD_TYPES })
-  @IsIn(PRESET_FIELD_TYPES)
+  @ApiPropertyOptional({ example: "不区分行业的通用首页素材" })
+  @Transform(trimString)
+  @IsString()
+  @MaxLength(1000)
   @IsOptional()
-  field_type?: string;
+  description?: string;
 
-  @ApiPropertyOptional({ minimum: 1 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  maxlength?: number;
+  @ApiProperty({
+    type: PresetContentDto,
+    description: "内容包 JSON：文本与图片素材",
+  })
+  @IsObject()
+  @ValidateNested()
+  @Type(() => PresetContentDto)
+  content!: PresetContentDto;
 
   @ApiPropertyOptional({ default: 10 })
   @Type(() => Number)
@@ -86,7 +109,7 @@ export class CreatePresetDto {
   @IsOptional()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ example: "说明" })
+  @ApiPropertyOptional({ example: "内部备注" })
   @Transform(trimString)
   @IsString()
   @MaxLength(1000)

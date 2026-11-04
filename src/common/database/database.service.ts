@@ -49,6 +49,68 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: `
+      DROP INDEX IF EXISTS idx_presets_key;
+      ALTER TABLE presets RENAME TO presets_legacy;
+
+      CREATE TABLE presets (
+        id          TEXT PRIMARY KEY,
+        category    TEXT NOT NULL,
+        name        TEXT NOT NULL,
+        description TEXT,
+        content     TEXT NOT NULL,
+        sort        INTEGER NOT NULL DEFAULT 10,
+        enabled     INTEGER NOT NULL DEFAULT 1,
+        remark      TEXT,
+        created_at  TEXT,
+        updated_at  TEXT
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_presets_category_name
+        ON presets(category, name);
+      CREATE INDEX IF NOT EXISTS idx_presets_category
+        ON presets(category);
+
+      DROP TABLE presets_legacy;
+
+      CREATE TABLE IF NOT EXISTS preset_categories (
+        key         TEXT PRIMARY KEY,
+        name        TEXT NOT NULL,
+        description TEXT,
+        sort        INTEGER NOT NULL DEFAULT 10,
+        created_at  TEXT,
+        updated_at  TEXT
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_preset_categories_name
+        ON preset_categories(name);
+    `,
+  },
+  {
+    version: 3,
+    sql: `
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/solar1/640/400', '/seed/solar1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/solar2/640/400', '/seed/solar2.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/battery1/640/400', '/seed/battery1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/kitchen1/640/400', '/seed/kitchen1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/wardrobe1/640/400', '/seed/wardrobe1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/smarthome1/640/400', '/seed/smarthome1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/cobot1/640/400', '/seed/cobot1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/cnc1/640/400', '/seed/cnc1.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/cnc2/640/400', '/seed/cnc2.svg');
+      UPDATE presets SET content = REPLACE(content,
+        'https://picsum.photos/seed/home1/640/400', '/seed/home1.svg');
+    `,
+  },
 ];
 
 @Injectable()

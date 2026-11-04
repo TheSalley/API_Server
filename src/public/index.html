@@ -231,7 +231,7 @@
 <body>
 <header>
   <h1>API 调试面板</h1>
-  <span class="sub">material_collect_system 后端 · 预设文案 / 媒体上传</span>
+  <span class="sub">material_collect_system 后端 · 预设内容包 / 媒体上传</span>
   <div class="right">
     <span class="sub">Base URL</span>
     <input id="baseUrl" type="text" spellcheck="false" />
@@ -299,29 +299,38 @@
 // ---------- 接口定义 ----------
 const ENDPOINTS = [
   { g: "基础", name: "健康检查", m: "GET", path: "/api/health", desc: "服务状态与时间" },
-  { g: "预设文案", name: "预设列表", m: "GET", path: "/api/presets/list",
+  { g: "预设内容包", name: "内容包列表", m: "GET", path: "/api/presets/list",
     query: [
       { k: "page", v: "1" }, { k: "page_size", v: "20" },
-      { k: "keyword", v: "" }, { k: "widget_type", v: "" },
-      { k: "field", v: "" }, { k: "lang", v: "" }, { k: "enabled", v: "" },
+      { k: "keyword", v: "" }, { k: "category", v: "" }, { k: "enabled", v: "" },
     ],
-    desc: "分页 / 关键字 / 组件 / 字段 / 语言过滤" },
-  { g: "预设文案", name: "新建预设", m: "POST", path: "/api/presets/add",
-    body: { widget_type: "heading", field: "title", content: "Welcome" },
-    desc: "widget_type / field / content 必填，lang 缺省 en" },
-  { g: "预设文案", name: "更新预设", m: "POST", path: "/api/presets/update",
-    body: { id: "", content: "New content here" }, desc: "部分字段更新，body/query 传 id" },
-  { g: "预设文案", name: "删除预设", m: "POST", path: "/api/presets/delete",
-    body: { id: "" }, desc: "body/query 传 id 删除" },
-  { g: "预设文案", name: "应用到 Elementor 数据", m: "POST", path: "/api/presets/apply",
+    desc: "分页 / 关键字 / 行业分类 / 启用状态过滤" },
+  { g: "预设内容包", name: "新建内容包", m: "POST", path: "/api/presets/add",
     body: {
-      lang: "en",
-      elementor_data: [
-        { id: "a1", elType: "widget", widgetType: "button", settings: {} },
-        { id: "a2", elType: "widget", widgetType: "image", settings: {} },
-      ]
+      category: "common",
+      name: "通用首页",
+      description: "不区分行业的通用素材",
+      content: {
+        texts: [{ title: "主标题", content: "把复杂留给我们，把简单交给你" }],
+        images: [{ name: "主视觉", url: "/seed/home1.svg" }]
+      },
+      sort: 10,
+      enabled: true
     },
-    desc: "填充缺失/空白的文案与图片字段" },
+    desc: "category / name / content 必填；content 为文本与图片 JSON 集合" },
+  { g: "预设内容包", name: "更新内容包", m: "POST", path: "/api/presets/update",
+    body: { id: "", content: { texts: [], images: [] } }, desc: "部分字段更新，body/query 传 id" },
+  { g: "预设内容包", name: "删除内容包", m: "POST", path: "/api/presets/delete",
+    body: { id: "" }, desc: "body/query 传 id 删除" },
+  { g: "预设分类", name: "分类列表", m: "GET", path: "/api/presets/categories",
+    desc: "内容包的行业分类" },
+  { g: "预设分类", name: "新建分类", m: "POST", path: "/api/presets/categories/add",
+    body: { key: "common", name: "通用", description: "不区分行业的通用素材", sort: 10 },
+    desc: "key 可省略，省略时自动生成" },
+  { g: "预设分类", name: "更新分类", m: "POST", path: "/api/presets/categories/update",
+    body: { key: "common", name: "通用" }, desc: "body/query 传 key" },
+  { g: "预设分类", name: "删除分类", m: "POST", path: "/api/presets/categories/delete",
+    body: { key: "" }, desc: "分类下有内容包时不可删除" },
   { g: "媒体", name: "上传图片", m: "POST", path: "/api/media/upload", upload: true,
     desc: "multipart/form-data，字段 file，≤20MB" },
   { g: "媒体", name: "媒体列表", m: "GET", path: "/api/media/list",
@@ -331,6 +340,8 @@ const ENDPOINTS = [
     params: [{ k: "id", v: "" }], desc: "按 id 查询" },
   { g: "媒体", name: "删除媒体", m: "DELETE", path: "/api/media/:id",
     params: [{ k: "id", v: "" }], desc: "同时删除磁盘文件" },
+  { g: "媒体", name: "预设种子图片", m: "GET", path: "/seed/home1.svg",
+    desc: "服务端内置的预设示例图片" },
 ];
 
 // ---------- 状态 ----------
