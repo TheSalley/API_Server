@@ -78,6 +78,7 @@ npm run start:dev
 | `ALLOWED_IMAGE_TYPES` | `jpg,jpeg,png,gif,webp,bmp,avif` | 允许的图片扩展名 |
 | `DEFAULT_LANG` | `en` | 默认语言，必须包含在 `SUPPORTED_LANGS` 中 |
 | `SUPPORTED_LANGS` | `en` | 逗号分隔的允许语言 |
+| `IMAGEBASE_API_BASE_URL` | `https://imagebase.yhct.site/wp-json/public-cropper/v1` | ImageBase 公开素材接口地址 |
 
 参考 `.env.example`。
 
@@ -114,6 +115,7 @@ src/
 | `POST` | `/api/presets/add` | 新建内容包 |
 | `POST` | `/api/presets/update` | 更新内容包，`id` 可放在 body 或 query |
 | `POST` | `/api/presets/delete` | 删除内容包，`id` 可放在 body 或 query |
+| `POST` | `/api/presets/sync/imagebase` | 从 ImageBase 同步分组与图片；body 可选 `groups: [13, 15]` |
 | `GET` | `/api/presets/categories` | 分类列表 |
 | `POST` | `/api/presets/categories/add` | 新建分类，`key` 可省略并自动生成 |
 | `POST` | `/api/presets/categories/update` | 更新分类，`key` 可放在 body 或 query |
@@ -145,6 +147,23 @@ src/
 - `content.texts` 与 `content.images` 至少一项包含有效内容
 - 图片 URL 支持 `http(s)://` 或以 `/` 开头的站内路径
 - 同一分类下内容包名称唯一（`category + name`）
+
+ImageBase 同步：
+
+```http
+POST /api/presets/sync/imagebase
+Content-Type: application/json
+
+{ "groups": [] }
+```
+
+- 数据源默认为 `https://imagebase.yhct.site/wp-json/public-cropper/v1`
+- `groups` 省略或传空数组时同步全部分组；也可以传 `[13, 15]` 只同步指定分组
+- 每个分组同步为一条 `preset_categories` 记录，并生成同名预设内容包
+- 分组内图片以 `content.images` 保存，`full` 原图优先，缺失时回退 `large` / `thumb`
+- 重复同步按 `remark = imagebase:group:<id>` 更新，不会产生重复分类或内容包
+- 数据分组会在一个 SQLite 事务中写入，拉取失败时不会留下半套数据
+- 分组图片为空时只保留分类并清掉该分组旧的同步内容包
 
 分类示例：
 

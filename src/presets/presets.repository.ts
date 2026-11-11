@@ -98,6 +98,12 @@ export class PresetsRepository {
     return mapRow(row);
   }
 
+  findByRemark(remark: string): PresetRecord | null {
+    const row = this.db
+      .prepare(`${SELECT_SQL} WHERE p.remark = ? ORDER BY p.created_at ASC LIMIT 1`)
+      .get(remark) as unknown as PresetDbRow | undefined;
+    return mapRow(row);
+  }
   insert(record: PresetRecord): PresetRecord {
     this.db.prepare(INSERT_SQL).run(...bindValues(record));
     return this.findById(record.id)!;
@@ -286,6 +292,59 @@ export class PresetsRepository {
     return this.findCategoryByKey(key);
   }
 
+  syncImagebase(
+    categories: PresetCategoryRecord[],
+    presets: PresetRecord[],
+    clearPresetIds: string[],
+  ): void {
+    const upsertCategory = this.db.prepare(
+      `INSERT INTO preset_categories (${CATEGORY_INSERT_COLUMNS.join(", ")})
+       VALUES (${CATEGORY_INSERT_COLUMNS.map(() => "?").join(", ")})
+       ON CONFLICT(key) DO UPDATE SET
+         name = excluded.name,
+         description = excluded.description,
+         sort = excluded.sort,
+         updated_at = excluded.updated_at`,
+    );
+    const upsertPreset = this.db.prepare(
+      `INSERT INTO presets (${INSERT_COLUMNS.join(", ")})
+       VALUES (${INSERT_COLUMNS.map(() => "?").join(", ")})
+       ON CONFLICT(id) DO UPDATE SET
+         category = excluded.category,
+         name = excluded.name,
+         description = excluded.description,
+         content = excluded.content,
+         sort = excluded.sort,
+         enabled = excluded.enabled,
+         remark = excluded.remark,
+         updated_at = excluded.updated_at`,
+    );
+    const clearPreset = this.db.prepare("DELETE FROM presets WHERE id = ?");
+
+    this.db.exec("BEGIN");
+    try {
+      for (const record of categories) {
+        upsertCategory.run(
+          record.key,
+          record.name,
+          record.description,
+          record.sort,
+          record.created_at,
+          record.updated_at,
+        );
+      }
+      for (const record of presets) {
+        upsertPreset.run(...bindValues(record));
+      }
+      for (const id of clearPresetIds) {
+        clearPreset.run(id);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
   removeCategory(key: string): PresetCategoryRecord | null {
     const existing = this.findCategoryByKey(key);
     if (!existing) return null;
@@ -293,3 +352,5 @@ export class PresetsRepository {
     return existing;
   }
 }
+
+

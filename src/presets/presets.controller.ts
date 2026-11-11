@@ -8,12 +8,25 @@ import { DeletePresetDto } from "./dto/delete-preset.dto.js";
 import { ListPresetsQueryDto } from "./dto/list-presets-query.dto.js";
 import { UpdatePresetCategoryDto } from "./dto/update-preset-category.dto.js";
 import { UpdatePresetDto } from "./dto/update-preset.dto.js";
+import { SyncImagebaseDto } from "./dto/sync-imagebase.dto.js";
+import { ImagebaseSyncService } from "./imagebase-sync.service.js";
 import { PresetsService } from "./presets.service.js";
 
 @ApiTags("presets")
 @Controller("api/presets")
 export class PresetsController {
-  constructor(private readonly presetsService: PresetsService) {}
+  constructor(
+    private readonly presetsService: PresetsService,
+    private readonly imagebaseSyncService: ImagebaseSyncService,
+  ) {}
+
+  @Post("sync/imagebase")
+  @HttpCode(200)
+  @ResponseMessage("同步成功")
+  @ApiOperation({ summary: "从 ImageBase 同步分组与图片素材" })
+  syncImagebase(@Body() dto: SyncImagebaseDto) {
+    return this.imagebaseSyncService.sync({ groups: dto?.groups });
+  }
 
   @Get("list")
   @ApiOperation({ summary: "预设内容包列表" })

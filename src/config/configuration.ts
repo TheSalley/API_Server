@@ -13,6 +13,7 @@ export interface AppConfig {
   supportedLangs: string[];
   corsOrigins: string[] | "*";
   panelEnabled: boolean;
+  imagebaseApiBaseUrl: string;
 }
 
 const PROJECT_ROOT = path.resolve(
@@ -78,5 +79,9 @@ export function configuration(): AppConfig {
     supportedLangs,
     corsOrigins,
     panelEnabled: parseBoolean(process.env.PANEL_ENABLED, true),
+    imagebaseApiBaseUrl: (
+      process.env.IMAGEBASE_API_BASE_URL ??
+      "https://imagebase.yhct.site/wp-json/public-cropper/v1"
+    ).trim(),
   };
 }

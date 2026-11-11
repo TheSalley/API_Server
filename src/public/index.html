@@ -322,6 +322,9 @@ const ENDPOINTS = [
     body: { id: "", content: { texts: [], images: [] } }, desc: "部分字段更新，body/query 传 id" },
   { g: "预设内容包", name: "删除内容包", m: "POST", path: "/api/presets/delete",
     body: { id: "" }, desc: "body/query 传 id 删除" },
+  { g: "预设内容包", name: "同步 ImageBase", m: "POST", path: "/api/presets/sync/imagebase",
+    body: { groups: [] },
+    desc: "拉取 imagebase.yhct.site 分组与图片，写入分类和预设内容包；groups 为空同步全部" },
   { g: "预设分类", name: "分类列表", m: "GET", path: "/api/presets/categories",
     desc: "内容包的行业分类" },
   { g: "预设分类", name: "新建分类", m: "POST", path: "/api/presets/categories/add",
@@ -568,5 +571,3 @@ select(ENDPOINTS[0]);
 </script>
 </body>
 </html>
-
-
